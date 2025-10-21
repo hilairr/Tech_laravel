@@ -2,67 +2,45 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
+use App\Models\Order;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class AdminController extends Controller
 {
-    // Liste des rôles autorisés
-    private const VALID_ROLES = ['admin', 'contrôleur', 'utilisateur'];
-
-    /**
-     * AdminController constructor.
-     * Applique le middleware pour restreindre l'accès aux administrateurs uniquement.
-     */
     public function __construct()
     {
+        // Accès réservé aux admins
         $this->middleware(['auth', 'role:admin']);
     }
 
     /**
-     * Affiche la liste de tous les utilisateurs.
-     *
-     * @return \Illuminate\View\View
+     * Affiche toutes les commandes
      */
-    public function index()
+    public function commandes()
     {
-        $users = User::all();
-        return view('acceuille.index', compact('users'));
+        // On récupère toutes les commandes avec l’utilisateur et le nombre d’articles
+        $orders = Order::with('user')
+            ->withCount('items') // items_count disponible dans la vue
+            ->orderByDesc('created_at')
+            ->get();
+
+        // On renvoie la vue 'admin.commande' avec la variable $orders
+        return view('admin.commande', compact('orders'));
     }
 
     /**
-     * Met à jour le rôle d'un utilisateur.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Models\User  $user
-     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+     * Supprime une commande
      */
-    public function updateRole(Request $request, User $user)
+    public function destroy(Order $order)
     {
-        // Validation des données
-        $request->validate([
-            'role' => ['required', 'in:' . implode(',', self::VALID_ROLES)],
-        ], [
-            'role.required' => 'Le rôle est obligatoire.',
-            'role.in' => 'Le rôle sélectionné n\'est pas valide.'
-        ]);
-
-        try {
-            // Mise à jour du rôle dans une transaction
-            DB::transaction(function () use ($request, $user) {
-                $user->update(['role' => $request->role]);
-            });
-
-            // Réponse pour une requête web
-            return redirect()->route('admin.users')->with('success', 'Rôle mis à jour avec succès.');
-        } catch (\Exception $e) {
-            // Journalisation de l'erreur
-            Log::error('Erreur lors de la mise à jour du rôle de l\'utilisateur : ' . $e->getMessage());
-
-            // Réponse pour une requête web
-            return redirect()->route('admin.users')->with('error', 'Une erreur est survenue lors de la mise à jour du rôle.');
+        if (method_exists($order, 'items')) {
+            $order->items()->delete();
         }
+
+        $order->delete();
+
+        return redirect()
+            ->route('admin.commandes') // redirection vers la liste des commandes
+            ->with('success', 'Commande supprimée avec succès.');
     }
 }
